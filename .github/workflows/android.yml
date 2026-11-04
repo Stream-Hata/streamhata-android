@@ -31,6 +31,7 @@ jobs:
           mv "$sdk/cmdline-tools/cmdline-tools" "$sdk/cmdline-tools/latest"
           export ANDROID_HOME="$sdk"
           echo "ANDROID_HOME=$sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$sdk" >> "$GITHUB_ENV"
           echo "$sdk/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
           yes | "$sdk/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           "$sdk/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-35" "build-tools;34.0.0" "build-tools;35.0.0" >/dev/null
