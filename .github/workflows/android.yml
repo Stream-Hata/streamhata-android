@@ -46,7 +46,7 @@ jobs:
           set +e
           gradle :app:assembleDebug :chat-app:assembleDebug --no-daemon --stacktrace > build.log 2>&1
           status=$?
-          tail -40 build.log | while IFS= read -r line; do echo "::error title=Gradle::${line}"; done
+          head -80 build.log | while IFS= read -r line; do echo "::error title=Gradle::${line}"; done
           cat build.log
           exit $status
 
