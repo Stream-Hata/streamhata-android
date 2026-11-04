@@ -61,17 +61,11 @@ jobs:
       - name: Publish APKs
         if: startsWith(github.ref, 'refs/tags/')
         env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
-            echo "Release signing is not configured yet"
-            exit 0
-          fi
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release edit "$GITHUB_REF_NAME"
           else
-            gh release create "$GITHUB_REF_NAME" --title "StreamHata Android $GITHUB_REF_NAME"
+            gh release create "$GITHUB_REF_NAME" --title "StreamHata Android $GITHUB_REF_NAME" --notes "Android alpha debug build"
           fi
           find app/build/outputs/apk/debug chat-app/build/outputs/apk/debug -name '*.apk' -print0 | xargs -0 gh release upload "$GITHUB_REF_NAME" --clobber
