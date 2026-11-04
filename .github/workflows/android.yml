@@ -33,7 +33,7 @@ jobs:
           echo "ANDROID_HOME=$sdk" >> "$GITHUB_ENV"
           echo "$sdk/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
           yes | "$sdk/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$sdk/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-35" "build-tools;35.0.0" >/dev/null
+          "$sdk/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-35" "build-tools;34.0.0" "build-tools;35.0.0" >/dev/null
 
       - name: Install Gradle
         run: |
