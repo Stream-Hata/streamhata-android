@@ -46,7 +46,7 @@ jobs:
           set +e
           gradle :app:assembleDebug :chat-app:assembleDebug --no-daemon --stacktrace > build.log 2>&1
           status=$?
-          head -80 build.log | while IFS= read -r line; do echo "::error title=Gradle::${line}"; done
+          grep -n -A8 -B2 -E "What went wrong|FAILURE|Caused by|SDK location|Failed to|error:" build.log | head -120 | while IFS= read -r line; do echo "::error title=Gradle::${line}"; done
           cat build.log
           exit $status
 
