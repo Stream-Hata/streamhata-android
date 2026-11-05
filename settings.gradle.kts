@@ -15,5 +15,6 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "streamhata-android"
+include(":core")
 include(":app")
 include(":chat-app")
