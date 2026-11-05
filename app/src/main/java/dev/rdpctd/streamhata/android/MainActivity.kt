@@ -68,6 +68,7 @@ import dev.rdpctd.streamhata.core.ui.StreamHataPink
 import dev.rdpctd.streamhata.core.ui.StreamHataSurface
 import dev.rdpctd.streamhata.core.ui.StreamHataSurfaceHigh
 import dev.rdpctd.streamhata.core.ui.StreamHataText
+import dev.rdpctd.streamhata.core.ui.StreamHataLogin
 import dev.rdpctd.streamhata.core.ui.StreamHataTheme
 import kotlinx.coroutines.delay
 
@@ -145,6 +146,16 @@ private fun App(
     onRestored: (MessagingIdentity) -> Unit,
 ) {
     var screen by remember { mutableStateOf("chat") }
+
+    if (!loggedIn) {
+        StreamHataLogin(
+            title = "Добро пожаловать в StreamHata",
+            subtitle = "Чат, статистика и защищённые сообщения стримеров",
+            features = listOf("Twitch-чат и статистика", "E2EE-мессенджер", "Уведомления и recovery"),
+            onLogin = onLogin,
+        )
+        return
+    }
 
     Scaffold(
         containerColor = Color.Transparent,
