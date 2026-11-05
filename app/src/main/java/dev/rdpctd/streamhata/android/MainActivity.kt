@@ -16,17 +16,20 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import dev.rdpctd.streamhata.core.ApiClient
 import dev.rdpctd.streamhata.core.AuthManager
 
 class MainActivity : ComponentActivity() {
     private lateinit var auth: AuthManager
     private val loggedIn = mutableStateOf(false)
+    private val profileName = mutableStateOf("")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         auth = AuthManager(this, "streamhata")
         loggedIn.value = auth.isLoggedIn()
         auth.handleIntent(intent.data) { loggedIn.value = it }
+        if (loggedIn.value) loadProfile()
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -37,11 +40,15 @@ class MainActivity : ComponentActivity() {
                     ) {
                         Text("StreamHata", style = MaterialTheme.typography.headlineLarge)
                         Text(
-                            if (loggedIn.value) "Вы вошли" else "Android alpha",
+                            when {
+                                loggedIn.value && profileName.value.isNotBlank() -> "Вы вошли как ${profileName.value}"
+                                loggedIn.value -> "Вы вошли"
+                                else -> "Android alpha"
+                            },
                             style = MaterialTheme.typography.bodyLarge
                         )
                         if (loggedIn.value) {
-                            Button(onClick = { auth.logout(); loggedIn.value = false }) {
+                            Button(onClick = { auth.logout(); loggedIn.value = false; profileName.value = "" }) {
                                 Text("Выйти")
                             }
                         } else {
@@ -57,6 +64,18 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        auth.handleIntent(intent.data) { loggedIn.value = it }
+        auth.handleIntent(intent.data) {
+            loggedIn.value = it
+            if (it) loadProfile()
+        }
+    }
+
+    private fun loadProfile() {
+        ApiClient { auth.token() }.profile { profile ->
+            runOnUiThread {
+                profileName.value = profile?.displayName ?: ""
+                if (profile == null) loggedIn.value = false
+            }
+        }
     }
 }
