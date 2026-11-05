@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import dev.rdpctd.streamhata.core.ApiClient
 import dev.rdpctd.streamhata.core.AuthManager
 import dev.rdpctd.streamhata.core.ChatMessage
+import dev.rdpctd.streamhata.core.TwitchProfile
 import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
@@ -41,6 +42,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var api: ApiClient
     private val loggedIn = mutableStateOf(false)
     private val profileName = mutableStateOf("")
+    private val profile = mutableStateOf<TwitchProfile?>(null)
+    private val screen = mutableStateOf("chat")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -52,13 +55,22 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    ChatScreen(
-                        loggedIn = loggedIn.value,
-                        profileName = profileName.value,
-                        onLogin = { auth.openLogin() },
-                        onLogout = { auth.logout(); loggedIn.value = false; profileName.value = "" },
-                        api = api,
-                    )
+                    if (screen.value == "profile") {
+                        ProfileScreen(
+                            profile = profile.value,
+                            onBack = { screen.value = "chat" },
+                            onLogout = { auth.logout(); loggedIn.value = false; profileName.value = ""; profile.value = null; screen.value = "chat" },
+                        )
+                    } else {
+                        ChatScreen(
+                            loggedIn = loggedIn.value,
+                            profileName = profileName.value,
+                            onLogin = { auth.openLogin() },
+                            onLogout = { auth.logout(); loggedIn.value = false; profileName.value = ""; profile.value = null },
+                            onOpenProfile = { screen.value = "profile" },
+                            api = api,
+                        )
+                    }
                 }
             }
         }
@@ -73,6 +85,7 @@ class MainActivity : ComponentActivity() {
         api.profile { profile ->
             runOnUiThread {
                 profileName.value = profile?.displayName ?: ""
+                this.profile.value = profile
                 if (profile == null) loggedIn.value = false
             }
         }
@@ -85,6 +98,7 @@ private fun ChatScreen(
     profileName: String,
     onLogin: () -> Unit,
     onLogout: () -> Unit,
+    onOpenProfile: () -> Unit,
     api: ApiClient,
     scheme: String = "streamhata",
 ) {
@@ -106,8 +120,13 @@ private fun ChatScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(if (loggedIn) "Вы вошли как ${profileName.ifBlank { "стример" }}" else "StreamHata")
-            Button(onClick = if (loggedIn) onLogout else onLogin) {
-                Text(if (loggedIn) "Выйти" else "Войти")
+            Row {
+                if (loggedIn) {
+                    Button(onClick = onOpenProfile) { Text("Профиль") }
+                }
+                Button(onClick = if (loggedIn) onLogout else onLogin) {
+                    Text(if (loggedIn) "Выйти" else "Войти")
+                }
             }
         }
         status.takeIf { it.isNotBlank() }?.let { Text(it) }
@@ -141,5 +160,33 @@ private fun ChatScreen(
                 }
             ) { Text("Отправить") }
         }
+    }
+}
+
+
+@Composable
+private fun ProfileScreen(profile: TwitchProfile?, onBack: () -> Unit, onLogout: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Профиль", style = MaterialTheme.typography.headlineSmall)
+            Button(onClick = onBack) { Text("Назад") }
+        }
+        if (profile == null) {
+            Text("Профиль не загружен")
+        } else {
+            Text(profile.displayName, style = MaterialTheme.typography.headlineMedium)
+            Text("@${profile.login}")
+            if (profile.avatar.isNotBlank()) {
+                Text(profile.avatar, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        Button(onClick = onLogout) { Text("Выйти") }
     }
 }
