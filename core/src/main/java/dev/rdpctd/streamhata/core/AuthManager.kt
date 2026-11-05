@@ -29,6 +29,8 @@ class AuthManager(private val activity: Activity, private val scheme: String) {
 
     fun token(): String? = store.load()
 
+    fun secureStore(): TokenStore = store
+
     fun logout() = store.clear()
 
     private fun exchange(code: String, callback: (Boolean) -> Unit) {

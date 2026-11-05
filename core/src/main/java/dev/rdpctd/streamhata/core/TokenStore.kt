@@ -26,6 +26,16 @@ class TokenStore(context: Context) {
 
     fun hasToken(): Boolean = !load().isNullOrBlank()
 
+    fun saveValue(name: String, value: String) {
+        prefs.edit().putString(name, encrypt(value)).apply()
+    }
+
+    fun loadValue(name: String): String? = prefs.getString(name, null)?.let { decrypt(it) }
+
+    fun clearValue(name: String) {
+        prefs.edit().remove(name).apply()
+    }
+
     private fun key(): SecretKey {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         (store.getKey(alias, null) as? SecretKey)?.let { return it }

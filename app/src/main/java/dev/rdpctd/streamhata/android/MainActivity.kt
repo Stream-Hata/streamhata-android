@@ -35,6 +35,10 @@ import dev.rdpctd.streamhata.core.ApiClient
 import dev.rdpctd.streamhata.core.AuthManager
 import dev.rdpctd.streamhata.core.AnalyticsSummary
 import dev.rdpctd.streamhata.core.ChatMessage
+import dev.rdpctd.streamhata.core.Contact
+import dev.rdpctd.streamhata.core.MessagingCrypto
+import dev.rdpctd.streamhata.core.MessagingIdentity
+import dev.rdpctd.streamhata.core.MessagingIdentityStore
 import dev.rdpctd.streamhata.core.TwitchProfile
 import kotlinx.coroutines.delay
 
@@ -45,11 +49,17 @@ class MainActivity : ComponentActivity() {
     private val profileName = mutableStateOf("")
     private val profile = mutableStateOf<TwitchProfile?>(null)
     private val screen = mutableStateOf("chat")
+    private lateinit var identityStore: MessagingIdentityStore
+    private val identity = mutableStateOf<MessagingIdentity?>(null)
+    private val selfLogin = mutableStateOf("")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         auth = AuthManager(this, "streamhata")
         api = ApiClient { auth.token() }
+        identityStore = MessagingIdentityStore(this)
+        identity.value = identityStore.loadOrCreate()
+
         loggedIn.value = auth.isLoggedIn()
         auth.handleIntent(intent.data) { loggedIn.value = it; if (it) loadProfile() }
         if (loggedIn.value) loadProfile()
@@ -62,6 +72,18 @@ class MainActivity : ComponentActivity() {
                             onBack = { screen.value = "chat" },
                             onLogout = { auth.logout(); loggedIn.value = false; profileName.value = ""; profile.value = null; screen.value = "chat" },
                         )
+                    } else if (screen.value == "messages") {
+                        val me = identity.value
+                        if (me != null && selfLogin.value.isNotBlank()) {
+                            MessagesScreen(
+                                identity = me,
+                                selfLogin = selfLogin.value,
+                                api = api,
+                                onBack = { screen.value = "chat" },
+                            )
+                        } else {
+                            Text("Сначала войдите")
+                        }
                     } else if (screen.value == "dashboard") {
                         DashboardScreen(
                             api = api,
@@ -77,6 +99,7 @@ class MainActivity : ComponentActivity() {
                             onLogout = { auth.logout(); loggedIn.value = false; profileName.value = ""; profile.value = null },
                             onOpenProfile = { screen.value = "profile" },
                             onOpenDashboard = { screen.value = "dashboard" },
+                            onOpenMessages = { screen.value = "messages" },
                             api = api,
                         )
                     }
@@ -94,8 +117,13 @@ class MainActivity : ComponentActivity() {
         api.profile { profile ->
             runOnUiThread {
                 profileName.value = profile?.displayName ?: ""
+                selfLogin.value = profile?.login ?: ""
                 this.profile.value = profile
-                if (profile == null) loggedIn.value = false
+                if (profile == null) {
+                    loggedIn.value = false
+                } else {
+                    identity.value?.let { api.saveIdentity(it.bundle) { } }
+                }
             }
         }
     }
@@ -109,6 +137,7 @@ private fun ChatScreen(
     onLogout: () -> Unit,
     onOpenProfile: () -> Unit,
     onOpenDashboard: () -> Unit,
+    onOpenMessages: () -> Unit,
     api: ApiClient,
     scheme: String = "streamhata",
 ) {
@@ -132,6 +161,7 @@ private fun ChatScreen(
             Text(if (loggedIn) "Вы вошли как ${profileName.ifBlank { "стример" }}" else "StreamHata")
             Row {
                 if (loggedIn) {
+                    Button(onClick = onOpenMessages) { Text("Чаты") }
                     Button(onClick = onOpenDashboard) { Text("Статистика") }
                     Button(onClick = onOpenProfile) { Text("Профиль") }
                 }
@@ -245,6 +275,86 @@ private fun DashboardScreen(
             Text("Среднее: ${data.avgViewers}")
             Text("Чаттеры: ${data.chatters}")
             Text("Сообщения: ${data.messages}")
+        }
+    }
+}
+
+
+@Composable
+private fun MessagesScreen(
+    identity: MessagingIdentity,
+    selfLogin: String,
+    api: ApiClient,
+    onBack: () -> Unit,
+) {
+    var contacts by remember { mutableStateOf<List<Contact>>(emptyList()) }
+    var selected by remember { mutableStateOf<Contact?>(null) }
+    var lines = remember { mutableStateListOf<String>() }
+    var draft by remember { mutableStateOf("") }
+    var status by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        api.contacts { contacts = it; if (it.isNotEmpty()) selected = it.first() }
+    }
+    LaunchedEffect(selected) {
+        val contact = selected ?: return@LaunchedEffect
+        api.messages(contact.login) { items, peer ->
+            lines.clear()
+            items.forEach { item ->
+                val text = runCatching {
+                    val senderBundle = if (item.sender == selfLogin) identity.bundle else contact.bundle
+                    val recipientBundle = if (item.sender == selfLogin) contact.bundle else null
+                    MessagingCrypto.decrypt(identity, senderBundle, item.envelope, recipientBundle)
+                }.getOrElse { "‹не удалось расшифровать›" }
+                lines += "${item.sender}: $text"
+            }
+            if (peer != null) {
+                contacts = contacts.map { if (it.login == contact.login) it.copy(bundle = peer) else it }
+            }
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding().padding(16.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Сообщения", style = MaterialTheme.typography.headlineSmall)
+            Button(onClick = onBack) { Text("Назад") }
+        }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            LazyColumn(modifier = Modifier.weight(0.35f)) {
+                items(contacts) { contact ->
+                    Button(onClick = { selected = contact }, modifier = Modifier.fillMaxWidth()) {
+                        Text(contact.displayName)
+                    }
+                }
+            }
+            LazyColumn(modifier = Modifier.weight(0.65f)) {
+                items(lines) { line -> Text(line, style = MaterialTheme.typography.bodySmall) }
+            }
+        }
+        status.takeIf { it.isNotBlank() }?.let { Text(it) }
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                modifier = Modifier.weight(1f),
+                value = draft,
+                onValueChange = { draft = it },
+                placeholder = { Text("Сообщение") }
+            )
+            Button(
+                modifier = Modifier.padding(start = 8.dp),
+                onClick = {
+                    val contact = selected
+                    if (contact == null || draft.isBlank()) return@Button
+                    val text = draft.trim()
+                    val envelope = MessagingCrypto.encrypt(identity, selfLogin, contact.login, contact.bundle, text)
+                    api.sendMessage(contact.login, envelope) { ok ->
+                        status = if (ok) "Отправлено" else "Ошибка отправки"
+                        if (ok) {
+                            lines += "$selfLogin: $text"
+                            draft = ""
+                        }
+                    }
+                }
+            ) { Text("Отправить") }
         }
     }
 }
