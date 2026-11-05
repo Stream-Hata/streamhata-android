@@ -40,6 +40,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.rdpctd.streamhata.core.ApiClient
@@ -130,10 +132,19 @@ private fun ChatRoot(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Box(
-                modifier = Modifier.size(34.dp).background(Brush.linearGradient(listOf(StreamHataPink, StreamHataCyan)), CircleShape),
-                contentAlignment = Alignment.Center
-            ) { Text("S", color = Color(0xFF0F0817), fontWeight = FontWeight.Bold) }
+            if (!profile?.avatar.isNullOrBlank()) {
+                AsyncImage(
+                    model = profile?.avatar,
+                    contentDescription = "Аватар стримера",
+                    modifier = Modifier.size(34.dp),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Box(
+                    modifier = Modifier.size(34.dp).background(Brush.linearGradient(listOf(StreamHataPink, StreamHataCyan)), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) { Text("S", color = Color(0xFF0F0817), fontWeight = FontWeight.Bold) }
+            }
             Column(modifier = Modifier.weight(1f)) {
                 Text("StreamHata Chat", style = MaterialTheme.typography.titleMedium)
                 Text(if (loggedIn) "@${profile?.login.orEmpty()}" else "android alpha", color = StreamHataMuted, style = MaterialTheme.typography.bodySmall)

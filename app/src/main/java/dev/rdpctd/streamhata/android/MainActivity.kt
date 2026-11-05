@@ -46,6 +46,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -242,16 +244,25 @@ private fun AppHeader(loggedIn: Boolean, profile: TwitchProfile?) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .size(34.dp)
-                .background(
-                    Brush.linearGradient(listOf(StreamHataPink, StreamHataCyan)),
-                    CircleShape
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("S", color = Color(0xFF0F0817), fontWeight = FontWeight.Bold)
+        if (!profile?.avatar.isNullOrBlank()) {
+            AsyncImage(
+                model = profile?.avatar,
+                contentDescription = "Аватар стримера",
+                modifier = Modifier.size(34.dp).background(StreamHataSurfaceHigh, CircleShape),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .background(
+                        Brush.linearGradient(listOf(StreamHataPink, StreamHataCyan)),
+                        CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("S", color = Color(0xFF0F0817), fontWeight = FontWeight.Bold)
+            }
         }
         Column(modifier = Modifier.weight(1f)) {
             Text("StreamHata", color = StreamHataText, style = MaterialTheme.typography.titleMedium)
@@ -407,10 +418,19 @@ private fun MessagesScreen(
                             modifier = Modifier.fillMaxWidth().padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Box(
-                                modifier = Modifier.size(34.dp).background(StreamHataPink.copy(alpha = 0.2f), CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) { Text(contact.displayName.take(2).uppercase(), color = StreamHataPink) }
+                            if (contact.avatar.isNotBlank()) {
+                                AsyncImage(
+                                    model = contact.avatar,
+                                    contentDescription = "Аватар",
+                                    modifier = Modifier.size(34.dp),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier.size(34.dp).background(StreamHataPink.copy(alpha = 0.2f), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) { Text(contact.displayName.take(2).uppercase(), color = StreamHataPink) }
+                            }
                             Column(modifier = Modifier.weight(1f).padding(start = 10.dp)) {
                                 Text(contact.displayName, fontWeight = FontWeight.SemiBold)
                                 Text("@${contact.login}", color = StreamHataMuted, style = MaterialTheme.typography.bodySmall)
@@ -514,10 +534,19 @@ private fun ProfileScreen(
         } else {
             Panel {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Box(
-                        modifier = Modifier.size(54.dp).background(StreamHataPink.copy(alpha = 0.2f), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) { Text((profile?.displayName ?: "?").take(2).uppercase(), color = StreamHataPink, fontWeight = FontWeight.Bold) }
+                    if (!profile?.avatar.isNullOrBlank()) {
+                        AsyncImage(
+                            model = profile?.avatar,
+                            contentDescription = "Аватар стримера",
+                            modifier = Modifier.size(54.dp),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier.size(54.dp).background(StreamHataPink.copy(alpha = 0.2f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) { Text((profile?.displayName ?: "?").take(2).uppercase(), color = StreamHataPink, fontWeight = FontWeight.Bold) }
+                    }
                     Column(modifier = Modifier.weight(1f)) {
                         Text(profile?.displayName ?: "Сессия активна", style = MaterialTheme.typography.titleMedium)
                         Text(
