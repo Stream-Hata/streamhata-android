@@ -79,6 +79,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var recovery: RecoveryManager
     private val loggedIn = mutableStateOf(false)
     private val profile = mutableStateOf<TwitchProfile?>(null)
+    private val profileError = mutableStateOf(false)
     private val identity = mutableStateOf<MessagingIdentity?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -96,6 +97,7 @@ class MainActivity : ComponentActivity() {
                 App(
                     loggedIn = loggedIn.value,
                     profile = profile.value,
+                    profileError = profileError.value,
                     identity = identity.value,
                     auth = auth,
                     api = api,
@@ -105,6 +107,7 @@ class MainActivity : ComponentActivity() {
                         auth.logout()
                         loggedIn.value = false
                         profile.value = null
+                        profileError.value = false
                     },
                     onProfile = { loadProfile() },
                     onRestored = { restored -> identity.value = restored; identityStore.save(restored) },
@@ -122,9 +125,10 @@ class MainActivity : ComponentActivity() {
         api.profile { value ->
             runOnUiThread {
                 profile.value = value
-                if (value == null) {
+                profileError.value = value == null
+                if (value == null && !auth.isLoggedIn()) {
                     loggedIn.value = false
-                } else {
+                } else if (value != null) {
                     identity.value?.let { api.saveIdentity(it.bundle) { } }
                 }
             }
@@ -136,6 +140,7 @@ class MainActivity : ComponentActivity() {
 private fun App(
     loggedIn: Boolean,
     profile: TwitchProfile?,
+    profileError: Boolean,
     identity: MessagingIdentity?,
     auth: AuthManager,
     api: ApiClient,
@@ -200,6 +205,7 @@ private fun App(
                 "stats" -> DashboardScreen(api = api, loggedIn = loggedIn, onLogin = onLogin)
                 "profile" -> ProfileScreen(
                     profile = profile,
+                    profileError = profileError,
                     loggedIn = loggedIn,
                     onLogin = onLogin,
                     onLogout = onLogout,
@@ -248,7 +254,7 @@ private fun AppHeader(loggedIn: Boolean, profile: TwitchProfile?) {
             Text("S", color = Color(0xFF0F0817), fontWeight = FontWeight.Bold)
         }
         Column(modifier = Modifier.weight(1f)) {
-            Text("StreamHata", style = MaterialTheme.typography.titleMedium)
+            Text("StreamHata", color = StreamHataText, style = MaterialTheme.typography.titleMedium)
             Text(
                 if (loggedIn) "@${profile?.login.orEmpty()}" else "android alpha",
                 style = MaterialTheme.typography.bodySmall,
@@ -494,6 +500,7 @@ private fun MiniStat(label: String, value: String, modifier: Modifier = Modifier
 @Composable
 private fun ProfileScreen(
     profile: TwitchProfile?,
+    profileError: Boolean,
     loggedIn: Boolean,
     onLogin: () -> Unit,
     onLogout: () -> Unit,
@@ -512,8 +519,11 @@ private fun ProfileScreen(
                         contentAlignment = Alignment.Center
                     ) { Text((profile?.displayName ?: "?").take(2).uppercase(), color = StreamHataPink, fontWeight = FontWeight.Bold) }
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(profile?.displayName.orEmpty(), style = MaterialTheme.typography.titleMedium)
-                        Text("@${profile?.login.orEmpty()}", color = StreamHataMuted)
+                        Text(profile?.displayName ?: "Сессия активна", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            if (profile != null) "@${profile.login}" else if (profileError) "профиль недоступен offline" else "",
+                            color = StreamHataMuted
+                        )
                     }
                 }
             }

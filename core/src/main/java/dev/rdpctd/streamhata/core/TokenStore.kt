@@ -15,7 +15,7 @@ class TokenStore(context: Context) {
     private val alias = "streamhata_token_key"
 
     fun save(token: String) {
-        prefs.edit().putString("refresh_token", encrypt(token)).apply()
+        prefs.edit().putString("refresh_token", encrypt(token)).commit()
     }
 
     fun load(): String? = prefs.getString("refresh_token", null)?.let { decrypt(it) }
@@ -27,7 +27,7 @@ class TokenStore(context: Context) {
     fun hasToken(): Boolean = !load().isNullOrBlank()
 
     fun saveValue(name: String, value: String) {
-        prefs.edit().putString(name, encrypt(value)).apply()
+        prefs.edit().putString(name, encrypt(value)).commit()
     }
 
     fun loadValue(name: String): String? = prefs.getString(name, null)?.let { decrypt(it) }
