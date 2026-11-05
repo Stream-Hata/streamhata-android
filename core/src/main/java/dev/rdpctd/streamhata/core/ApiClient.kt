@@ -19,6 +19,14 @@ data class ChatMessage(
     val color: String?
 )
 
+data class AnalyticsSummary(
+    val live: Boolean,
+    val peakViewers: Int,
+    val avgViewers: Int,
+    val chatters: Int,
+    val messages: Int
+)
+
 class ApiClient(private val tokenProvider: () -> String?) {
     private val client = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
@@ -47,6 +55,25 @@ class ApiClient(private val tokenProvider: () -> String?) {
             } else {
                 callback(null)
             }
+        }
+    }
+
+    fun analytics(callback: (AnalyticsSummary?) -> Unit) {
+        request("/rgg-sync/analytics") { json ->
+            val session = json?.optJSONObject("current") ?: json?.optJSONArray("history")?.optJSONObject(0)
+            if (session == null) {
+                callback(null)
+                return@request
+            }
+            callback(
+                AnalyticsSummary(
+                    live = json?.optJSONObject("current") != null,
+                    peakViewers = session.optInt("peakViewers"),
+                    avgViewers = session.optInt("avgViewers"),
+                    chatters = session.optInt("chatters"),
+                    messages = session.optInt("messages")
+                )
+            )
         }
     }
 

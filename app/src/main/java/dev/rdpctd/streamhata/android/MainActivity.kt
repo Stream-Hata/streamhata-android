@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import dev.rdpctd.streamhata.core.ApiClient
 import dev.rdpctd.streamhata.core.AuthManager
+import dev.rdpctd.streamhata.core.AnalyticsSummary
 import dev.rdpctd.streamhata.core.ChatMessage
 import dev.rdpctd.streamhata.core.TwitchProfile
 import kotlinx.coroutines.delay
@@ -61,6 +62,13 @@ class MainActivity : ComponentActivity() {
                             onBack = { screen.value = "chat" },
                             onLogout = { auth.logout(); loggedIn.value = false; profileName.value = ""; profile.value = null; screen.value = "chat" },
                         )
+                    } else if (screen.value == "dashboard") {
+                        DashboardScreen(
+                            api = api,
+                            loggedIn = loggedIn.value,
+                            onBack = { screen.value = "chat" },
+                            onLogin = { auth.openLogin() },
+                        )
                     } else {
                         ChatScreen(
                             loggedIn = loggedIn.value,
@@ -68,6 +76,7 @@ class MainActivity : ComponentActivity() {
                             onLogin = { auth.openLogin() },
                             onLogout = { auth.logout(); loggedIn.value = false; profileName.value = ""; profile.value = null },
                             onOpenProfile = { screen.value = "profile" },
+                            onOpenDashboard = { screen.value = "dashboard" },
                             api = api,
                         )
                     }
@@ -99,6 +108,7 @@ private fun ChatScreen(
     onLogin: () -> Unit,
     onLogout: () -> Unit,
     onOpenProfile: () -> Unit,
+    onOpenDashboard: () -> Unit,
     api: ApiClient,
     scheme: String = "streamhata",
 ) {
@@ -122,6 +132,7 @@ private fun ChatScreen(
             Text(if (loggedIn) "Вы вошли как ${profileName.ifBlank { "стример" }}" else "StreamHata")
             Row {
                 if (loggedIn) {
+                    Button(onClick = onOpenDashboard) { Text("Статистика") }
                     Button(onClick = onOpenProfile) { Text("Профиль") }
                 }
                 Button(onClick = if (loggedIn) onLogout else onLogin) {
@@ -188,5 +199,52 @@ private fun ProfileScreen(profile: TwitchProfile?, onBack: () -> Unit, onLogout:
             }
         }
         Button(onClick = onLogout) { Text("Выйти") }
+    }
+}
+
+
+@Composable
+private fun DashboardScreen(
+    api: ApiClient,
+    loggedIn: Boolean,
+    onBack: () -> Unit,
+    onLogin: () -> Unit,
+) {
+    var summary by remember { mutableStateOf<AnalyticsSummary?>(null) }
+    var error by remember { mutableStateOf("") }
+
+    LaunchedEffect(loggedIn) {
+        while (loggedIn) {
+            api.analytics { value ->
+                summary = value
+                if (value == null) error = "Нет данных или нужен вход"
+            }
+            delay(10_000)
+        }
+    }
+
+    Column(
+        modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Статистика", style = MaterialTheme.typography.headlineSmall)
+            Button(onClick = onBack) { Text("Назад") }
+        }
+        if (!loggedIn) {
+            Text("Войдите, чтобы видеть статистику")
+            Button(onClick = onLogin) { Text("Войти") }
+            return@Column
+        }
+        if (summary == null) {
+            Text(if (error.isBlank()) "Загрузка…" else error)
+        } else {
+            val data = summary!!
+            Text(if (data.live) "В эфире" else "Последняя сессия", style = MaterialTheme.typography.bodyLarge)
+            Text("Пик зрителей: ${data.peakViewers}", style = MaterialTheme.typography.headlineSmall)
+            Text("Среднее: ${data.avgViewers}")
+            Text("Чаттеры: ${data.chatters}")
+            Text("Сообщения: ${data.messages}")
+        }
     }
 }
