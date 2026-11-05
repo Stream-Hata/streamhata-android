@@ -115,6 +115,10 @@ class MessagingIdentityStore(context: Context) {
         return identity
     }
 
+    fun save(identity: MessagingIdentity) {
+        store.saveValue("messaging_identity", identity.toJson().toString())
+    }
+
     fun clear() = store.clearValue("messaging_identity")
 }
 

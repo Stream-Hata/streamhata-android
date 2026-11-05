@@ -130,6 +130,14 @@ class ApiClient(private val tokenProvider: () -> String?) {
         ) { callback(it != null) }
     }
 
+    fun saveRecovery(blob: JSONObject, callback: (Boolean) -> Unit) {
+        postJson("/rgg-sync/messaging/recovery", blob) { callback(it != null) }
+    }
+
+    fun loadRecovery(callback: (JSONObject?) -> Unit) {
+        request("/rgg-sync/messaging/recovery") { callback(it) }
+    }
+
     fun analytics(callback: (AnalyticsSummary?) -> Unit) {
         request("/rgg-sync/analytics") { json ->
             val session = json?.optJSONObject("current") ?: json?.optJSONArray("history")?.optJSONObject(0)

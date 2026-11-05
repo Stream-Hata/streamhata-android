@@ -30,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import dev.rdpctd.streamhata.core.ApiClient
 import dev.rdpctd.streamhata.core.AuthManager
@@ -39,6 +40,7 @@ import dev.rdpctd.streamhata.core.Contact
 import dev.rdpctd.streamhata.core.MessagingCrypto
 import dev.rdpctd.streamhata.core.MessagingIdentity
 import dev.rdpctd.streamhata.core.MessagingIdentityStore
+import dev.rdpctd.streamhata.core.RecoveryManager
 import dev.rdpctd.streamhata.core.TwitchProfile
 import kotlinx.coroutines.delay
 
@@ -50,6 +52,7 @@ class MainActivity : ComponentActivity() {
     private val profile = mutableStateOf<TwitchProfile?>(null)
     private val screen = mutableStateOf("chat")
     private lateinit var identityStore: MessagingIdentityStore
+    private lateinit var recovery: RecoveryManager
     private val identity = mutableStateOf<MessagingIdentity?>(null)
     private val selfLogin = mutableStateOf("")
 
@@ -58,7 +61,9 @@ class MainActivity : ComponentActivity() {
         auth = AuthManager(this, "streamhata")
         api = ApiClient { auth.token() }
         identityStore = MessagingIdentityStore(this)
+        recovery = RecoveryManager(this)
         identity.value = identityStore.loadOrCreate()
+
 
         loggedIn.value = auth.isLoggedIn()
         auth.handleIntent(intent.data) { loggedIn.value = it; if (it) loadProfile() }
@@ -71,6 +76,15 @@ class MainActivity : ComponentActivity() {
                             profile = profile.value,
                             onBack = { screen.value = "chat" },
                             onLogout = { auth.logout(); loggedIn.value = false; profileName.value = ""; profile.value = null; screen.value = "chat" },
+                            onRecovery = { screen.value = "recovery" },
+                        )
+                    } else if (screen.value == "recovery") {
+                        RecoveryScreen(
+                            recovery = recovery,
+                            identity = identity.value,
+                            api = api,
+                            onBack = { screen.value = "profile" },
+                            onRestored = { restored -> identity.value = restored; identityStore.save(restored) },
                         )
                     } else if (screen.value == "messages") {
                         val me = identity.value
@@ -206,7 +220,7 @@ private fun ChatScreen(
 
 
 @Composable
-private fun ProfileScreen(profile: TwitchProfile?, onBack: () -> Unit, onLogout: () -> Unit) {
+private fun ProfileScreen(profile: TwitchProfile?, onBack: () -> Unit, onLogout: () -> Unit, onRecovery: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -228,6 +242,7 @@ private fun ProfileScreen(profile: TwitchProfile?, onBack: () -> Unit, onLogout:
                 Text(profile.avatar, style = MaterialTheme.typography.bodySmall)
             }
         }
+        Button(onClick = onRecovery) { Text("Резервная копия") }
         Button(onClick = onLogout) { Text("Выйти") }
     }
 }
@@ -356,5 +371,75 @@ private fun MessagesScreen(
                 }
             ) { Text("Отправить") }
         }
+    }
+}
+
+
+@Composable
+private fun RecoveryScreen(
+    recovery: RecoveryManager,
+    identity: MessagingIdentity?,
+    api: ApiClient,
+    onBack: () -> Unit,
+    onRestored: (MessagingIdentity) -> Unit,
+) {
+    val context = LocalContext.current
+    var mnemonic by remember { mutableStateOf("") }
+    var restoreText by remember { mutableStateOf("") }
+    var status by remember { mutableStateOf("") }
+
+    Column(
+        modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Recovery", style = MaterialTheme.typography.headlineSmall)
+            Button(onClick = onBack) { Text("Назад") }
+        }
+        Button(onClick = {
+            val current = identity ?: return@Button
+            val phrase = recovery.generateMnemonic()
+            val blob = recovery.encrypt(current, phrase)
+            api.saveRecovery(blob) { ok ->
+                status = if (ok) "Копия сохранена. Запиши 24 слова." else "Не удалось сохранить копию"
+                if (ok) mnemonic = phrase
+            }
+        }) { Text("Создать резервную копию") }
+
+        if (mnemonic.isNotBlank()) {
+            Text("24 слова", style = MaterialTheme.typography.titleMedium)
+            Text(mnemonic)
+            Button(onClick = {
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, mnemonic)
+                }
+                context.startActivity(Intent.createChooser(send, "Сохранить recovery-фразу"))
+            }) { Text("Сохранить в заметки") }
+        }
+
+        Text("Восстановление", style = MaterialTheme.typography.titleMedium)
+        OutlinedTextField(
+            modifier = Modifier.fillMaxWidth(),
+            value = restoreText,
+            onValueChange = { restoreText = it },
+            placeholder = { Text("24 слова через пробел") }
+        )
+        Button(onClick = {
+            if (!recovery.validate(restoreText)) {
+                status = "Неверная фраза"
+                return@Button
+            }
+            api.loadRecovery { blob ->
+                if (blob == null) {
+                    status = "Резервная копия не найдена"
+                } else {
+                    runCatching { recovery.decrypt(blob, restoreText) }
+                        .onSuccess { restored -> onRestored(restored); status = "Восстановлено" }
+                        .onFailure { status = "Не удалось расшифровать" }
+                }
+            }
+        }) { Text("Восстановить") }
+        if (status.isNotBlank()) Text(status)
     }
 }
