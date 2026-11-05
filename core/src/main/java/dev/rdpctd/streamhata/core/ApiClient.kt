@@ -1,7 +1,9 @@
 package dev.rdpctd.streamhata.core
 
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
@@ -9,6 +11,12 @@ data class TwitchProfile(
     val login: String,
     val displayName: String,
     val avatar: String
+)
+
+data class ChatMessage(
+    val author: String,
+    val text: String,
+    val color: String?
 )
 
 class ApiClient(private val tokenProvider: () -> String?) {
@@ -40,6 +48,41 @@ class ApiClient(private val tokenProvider: () -> String?) {
                 callback(null)
             }
         }
+    }
+
+    fun chatRecent(callback: (List<ChatMessage>) -> Unit) {
+        request("/rgg-sync/chat/recent?limit=50") { json ->
+            val messages = mutableListOf<ChatMessage>()
+            val array = json?.optJSONArray("messages")
+            if (array != null) {
+                for (index in 0 until array.length()) {
+                    val item = array.optJSONObject(index) ?: continue
+                    val author = item.optJSONObject("author")
+                    messages += ChatMessage(
+                        author = author?.optString("display_name").orEmpty()
+                            .ifBlank { author?.optString("login").orEmpty() },
+                        text = item.optString("text"),
+                        color = item.optString("color").takeIf { it.startsWith("#") }
+                    )
+                }
+            }
+            callback(messages)
+        }
+    }
+
+    fun sendChat(text: String, channel: String, callback: (Boolean) -> Unit) {
+        val body = JSONObject().put("text", text).put("channel", channel).toString()
+            .toRequestBody("application/json".toMediaType())
+        val request = Request.Builder()
+            .url(AuthConfig.BASE_URL + "/rgg-sync/chat/send")
+            .post(body)
+            .build()
+        Thread {
+            val ok = runCatching {
+                client.newCall(request).execute().use { it.isSuccessful }
+            }.getOrDefault(false)
+            callback(ok)
+        }.start()
     }
 
     private fun request(path: String, callback: (JSONObject?) -> Unit) {
