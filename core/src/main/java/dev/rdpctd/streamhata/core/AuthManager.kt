@@ -1,8 +1,13 @@
 package dev.rdpctd.streamhata.core
 
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.pm.PackageManager
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -17,7 +22,24 @@ class AuthManager(private val activity: Activity, private val scheme: String) {
     fun isLoggedIn(): Boolean = store.hasToken()
 
     fun openLogin() {
-        activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(AuthConfig.authUrl(scheme))))
+        val url = AuthConfig.authUrl(scheme)
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        val candidates = activity.packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
+        val browser = candidates.firstOrNull { candidate ->
+            val packageName = candidate.activityInfo.packageName.lowercase()
+            !packageName.contains("webview") && packageName != "org.chromium.webview_shell"
+        }
+
+        if (browser == null) {
+            val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.setPrimaryClip(ClipData.newPlainText("StreamHata login", url))
+            Toast.makeText(activity, "Установи Chrome/Firefox. Ссылка для входа скопирована в буфер.", Toast.LENGTH_LONG).show()
+
+            return
+        }
+
+        intent.setPackage(browser.activityInfo.packageName)
+        activity.startActivity(intent)
     }
 
     fun handleIntent(data: Uri?, callback: (Boolean) -> Unit): Boolean {
