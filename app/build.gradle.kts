@@ -1,7 +1,13 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+}
+
+val localProperties = Properties().apply {
+    rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
 }
 
 android {
@@ -12,8 +18,27 @@ android {
         applicationId = "dev.rdpctd.streamhata.android"
         minSdk = 23
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0-alpha"
+        versionCode = 704
+        versionName = "0.7.4-alpha"
+    }
+
+    signingConfigs {
+        create("release") {
+            val storeFileValue = localProperties.getProperty("STREAMHATA_STORE_FILE")
+            if (!storeFileValue.isNullOrBlank()) {
+                storeFile = file(storeFileValue)
+                storePassword = localProperties.getProperty("STREAMHATA_STORE_PASSWORD")
+                keyAlias = localProperties.getProperty("STREAMHATA_KEY_ALIAS")
+                keyPassword = localProperties.getProperty("STREAMHATA_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release")
+        }
     }
 
     buildFeatures {

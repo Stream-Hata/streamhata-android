@@ -1,6 +1,10 @@
 package dev.rdpctd.streamhata.android
 
 import android.content.Intent
+import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import android.widget.Toast
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -27,9 +31,15 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.rememberDrawerState
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -42,6 +52,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -70,9 +81,12 @@ import dev.rdpctd.streamhata.core.ui.StreamHataPink
 import dev.rdpctd.streamhata.core.ui.StreamHataSurface
 import dev.rdpctd.streamhata.core.ui.StreamHataSurfaceHigh
 import dev.rdpctd.streamhata.core.ui.StreamHataText
+import dev.rdpctd.streamhata.core.ui.StreamHataLoading
 import dev.rdpctd.streamhata.core.ui.StreamHataLogin
 import dev.rdpctd.streamhata.core.ui.StreamHataTheme
+import java.net.URLEncoder
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private lateinit var auth: AuthManager
@@ -86,6 +100,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        dev.rdpctd.streamhata.core.AuthConfig.selectBase()
         auth = AuthManager(this, "streamhata")
         api = ApiClient { auth.token() }
         identityStore = MessagingIdentityStore(this)
@@ -152,7 +167,40 @@ private fun App(
     onProfile: () -> Unit,
     onRestored: (MessagingIdentity) -> Unit,
 ) {
-    var screen by remember { mutableStateOf("chat") }
+    var screen by remember { mutableStateOf("stats") }
+    var selectedGame by remember { mutableStateOf<dev.rdpctd.streamhata.core.GameSummary?>(null) }
+    var gameDiscussion by remember { mutableStateOf(false) }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    var showAdvanced by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
+    val launchChatApp = {
+        val installed = runCatching {
+            context.packageManager.getPackageInfo("dev.rdpctd.streamhata.chat", 0)
+        }.isSuccess
+        if (!installed) {
+            Toast.makeText(context, "StreamHata Chat не установлен", Toast.LENGTH_LONG).show()
+        } else {
+            api.desktopCode { code ->
+                mainHandler.post {
+                    if (code.isNullOrBlank()) {
+                        Toast.makeText(context, "Не удалось получить код входа", Toast.LENGTH_LONG).show()
+                    } else {
+                        val intent = Intent(
+                            Intent.ACTION_VIEW,
+                            Uri.parse("streamhata-chat://auth?code=" + URLEncoder.encode(code, "UTF-8"))
+                        ).apply { setPackage("dev.rdpctd.streamhata.chat") }
+                        runCatching { context.startActivity(intent) }
+                            .onFailure {
+                                Toast.makeText(context, "Не удалось открыть StreamHata Chat", Toast.LENGTH_LONG).show()
+                            }
+                    }
+                }
+            }
+        }
+        Unit
+    }
 
     if (!loggedIn) {
         StreamHataLogin(
@@ -164,26 +212,55 @@ private fun App(
         return
     }
 
-    Scaffold(
-        containerColor = Color.Transparent,
-        topBar = { AppHeader(loggedIn = loggedIn, profile = profile) },
-        bottomBar = {
-            NavigationBar(containerColor = StreamHataSurface, contentColor = StreamHataText) {
-                listOf(
-                    "chat" to "Чат",
-                    "messages" to "Чаты",
-                    "stats" to "Статистика",
-                    "profile" to "Профиль"
-                ).forEach { (id, label) ->
-                    NavigationBarItem(
-                        selected = screen == id,
-                        onClick = { screen = id },
-                        icon = {},
-                        label = { Text(label) }
-                    )
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(drawerContainerColor = StreamHataSurface) {
+                LazyColumn(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    item {
+                        Text("StreamHata", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(8.dp))
+                    }
+                    APP_SECTIONS.forEach { section ->
+                        val visible = section.items.filter { showAdvanced || !it.advanced }
+                        if (visible.isNotEmpty()) {
+                            item {
+                                Text(
+                                    section.title.uppercase(),
+                                    color = StreamHataMuted,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.padding(start = 12.dp, top = 14.dp, bottom = 4.dp)
+                                )
+                            }
+                            items(visible) { destination ->
+                                NavigationDrawerItem(
+                                    label = { Text(destination.label) },
+                                    selected = !destination.external && screen == destination.id,
+                                    onClick = {
+                                        if (destination.external) {
+                                            launchChatApp()
+                                        } else {
+                                            screen = destination.id
+                                            selectedGame = null
+                                            gameDiscussion = false
+                                        }
+                                        scope.launch { drawerState.close() }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    item {
+                        TextButton(onClick = { showAdvanced = !showAdvanced }) {
+                            Text(if (showAdvanced) "Свернуть дополнительные разделы" else "Ещё разделы")
+                        }
+                    }
                 }
             }
         }
+    ) {
+    Scaffold(
+        containerColor = Color.Transparent,
+        topBar = { AppHeader(loggedIn = loggedIn, profile = profile, onMenu = { scope.launch { drawerState.open() } }) },
     ) { padding ->
         CompositionLocalProvider(LocalContentColor provides StreamHataText) {
         Box(
@@ -197,6 +274,19 @@ private fun App(
                 )
         ) {
             when (screen) {
+                "games" -> {
+                    val game = selectedGame
+                    when {
+                        game == null -> GamesScreen(api = api) { selectedGame = it; gameDiscussion = false }
+                        gameDiscussion -> GameDiscussionScreen(api = api, game = game, onBack = { gameDiscussion = false })
+                        else -> GameDetailsScreen(
+                            api = api,
+                            summary = game,
+                            onBack = { selectedGame = null },
+                            onDiscuss = { gameDiscussion = true }
+                        )
+                    }
+                }
                 "messages" -> MessagesScreen(
                     loggedIn = loggedIn,
                     identity = identity,
@@ -213,7 +303,28 @@ private fun App(
                     onLogout = onLogout,
                     onRefresh = onProfile,
                     onRecovery = { screen = "recovery" },
+                    onEvents = { screen = "events" },
+                    onJournal = { screen = "journal" },
+                    onSettings = { screen = "settings" },
                 )
+                "events" -> EventsScreen(api = api, onBack = { screen = "profile" })
+                "viewers" -> ViewersScreen(api = api, onBack = { screen = "profile" })
+                "points" -> PointsScreen(api = api, onBack = { screen = "profile" })
+                "notifications" -> NotificationsScreen(api = api, onBack = { screen = "profile" })
+                "music" -> MusicScreen(api = api, onBack = { screen = "profile" })
+                "polls" -> PollsScreen(api = api, onBack = { screen = "profile" })
+                "roulette" -> RouletteScreen(api = api, onBack = { screen = "profile" })
+                "stream" -> StreamScreen(api = api, onBack = { screen = "profile" })
+                "obs" -> ObsScreen(api = api, onBack = { screen = "profile" })
+                "commands" -> CommandEditorScreen(api = api, onBack = { screen = "profile" })
+                "widgets" -> WidgetsScreen(api = api, onBack = { screen = "profile" })
+                "moderation" -> ModerationScreen(api = api, onBack = { screen = "profile" })
+                "donations" -> DonationsScreen(api = api, onBack = { screen = "profile" })
+                "jury" -> JuryScreen(api = api, onBack = { screen = "profile" })
+                "telegram" -> TelegramScreen(api = api, onBack = { screen = "profile" })
+                "wheel" -> WheelScreen(api = api, onBack = { screen = "profile" })
+                "journal" -> JournalScreen(onBack = { screen = "profile" })
+                "settings" -> SettingsScreen(onBack = { screen = "profile" })
                 "recovery" -> RecoveryScreen(
                     recovery = recovery,
                     identity = identity,
@@ -231,10 +342,11 @@ private fun App(
         }
         }
     }
+    }
 }
 
 @Composable
-private fun AppHeader(loggedIn: Boolean, profile: TwitchProfile?) {
+private fun AppHeader(loggedIn: Boolean, profile: TwitchProfile?, onMenu: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -244,6 +356,7 @@ private fun AppHeader(loggedIn: Boolean, profile: TwitchProfile?) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        TextButton(onClick = onMenu) { Text("☰") }
         if (!profile?.avatar.isNullOrBlank()) {
             AsyncImage(
                 model = profile?.avatar,
@@ -473,33 +586,68 @@ private fun MessagesScreen(
 @Composable
 private fun DashboardScreen(api: ApiClient, loggedIn: Boolean, onLogin: () -> Unit) {
     var summary by remember { mutableStateOf<AnalyticsSummary?>(null) }
+    var stream by remember { mutableStateOf<dev.rdpctd.streamhata.core.StreamStatus?>(null) }
     var error by remember { mutableStateOf("") }
+    var loading by remember { mutableStateOf(true) }
+
+    fun refresh() {
+        if (!loggedIn) {
+            loading = false
+            return
+        }
+        loading = true
+        api.analytics { value ->
+            summary = value
+        }
+        api.stream { value ->
+            stream = value
+            loading = false
+            if (value == null) error = "Не удалось загрузить статус стрима"
+        }
+    }
 
     LaunchedEffect(loggedIn) {
+        refresh()
         while (loggedIn) {
-            api.analytics { value -> summary = value; if (value == null) error = "Нет данных или нужен вход" }
-            delay(10_000)
+            delay(15_000)
+            refresh()
         }
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Статистика", style = MaterialTheme.typography.headlineSmall)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("Дашборд стрима", style = MaterialTheme.typography.headlineSmall)
+            TextButton(onClick = { refresh() }) { Text("Обновить") }
+        }
         if (!loggedIn) LoginCard(onLogin)
-        if (loggedIn && summary == null) Text(if (error.isBlank()) "Загрузка…" else error, color = StreamHataMuted)
-        summary?.let { data ->
+        if (loading) StreamHataLoading("Собираем статистику стрима…")
+        stream?.let { info ->
             Panel {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(if (data.live) "В эфире" else "Последняя сессия", color = StreamHataGreen, fontWeight = FontWeight.SemiBold)
-                    Text("Пик зрителей", color = StreamHataMuted, style = MaterialTheme.typography.bodySmall)
-                    Text("${data.peakViewers}", style = MaterialTheme.typography.headlineLarge)
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(if (info.viewers > 0) "В эфире" else "Стрим не в эфире", color = if (info.viewers > 0) StreamHataGreen else StreamHataMuted, fontWeight = FontWeight.SemiBold)
+                    Text(info.title.ifBlank { "Без названия" }, style = MaterialTheme.typography.titleMedium)
+                    Text(info.gameName.ifBlank { "Категория не указана" }, color = StreamHataMuted)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        MiniStat("Зрители", "${info.viewers}", Modifier.weight(1f))
+                        MiniStat("Shield", if (info.shieldMode) "вкл" else "выкл", Modifier.weight(1f))
+                    }
                 }
             }
+        }
+        summary?.let { data ->
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                MiniStat("Пик", "${data.peakViewers}", Modifier.weight(1f))
                 MiniStat("Среднее", "${data.avgViewers}", Modifier.weight(1f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 MiniStat("Чаттеры", "${data.chatters}", Modifier.weight(1f))
                 MiniStat("Сообщения", "${data.messages}", Modifier.weight(1f))
             }
         }
+        if (summary == null && !loading && loggedIn) {
+            Text("Пока нет данных аналитики за последний стрим", color = StreamHataMuted, style = MaterialTheme.typography.bodySmall)
+        }
+        if (error.isNotBlank()) Text(error, color = StreamHataPink, style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -526,6 +674,9 @@ private fun ProfileScreen(
     onLogout: () -> Unit,
     onRefresh: () -> Unit,
     onRecovery: () -> Unit,
+    onEvents: () -> Unit,
+    onJournal: () -> Unit,
+    onSettings: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Профиль", style = MaterialTheme.typography.headlineSmall)
@@ -558,6 +709,9 @@ private fun ProfileScreen(
             }
             Button(onClick = onRefresh) { Text("Обновить профиль") }
             Button(onClick = onRecovery) { Text("Резервная копия") }
+            Button(onClick = onEvents) { Text("События") }
+            Button(onClick = onJournal) { Text("Журнал стрима") }
+            Button(onClick = onSettings) { Text("Настройки") }
             Button(onClick = onLogout) { Text("Выйти") }
         }
     }
@@ -644,7 +798,7 @@ private fun Composer(
             modifier = Modifier.weight(1f),
             value = value,
             onValueChange = onChange,
-            placeholder = { Text(placeholder) },
+            placeholder = { Text(placeholder, maxLines = 1, overflow = TextOverflow.Ellipsis) },
             singleLine = false,
             shape = RoundedCornerShape(12.dp)
         )

@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.rdpctd.streamhata.core.ApiClient
 import dev.rdpctd.streamhata.core.AuthManager
@@ -112,9 +113,14 @@ private fun ChatRoot(
     var draft by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("") }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(loggedIn) {
+        if (!loggedIn) return@LaunchedEffect
         while (true) {
-            api.chatRecent { list -> messages.clear(); messages.addAll(list) }
+            api.chatRecent { list ->
+                messages.clear()
+                messages.addAll(list)
+                if (list.isEmpty()) status = "Чат пуст или ещё подключается"
+            }
             delay(3000)
         }
     }
@@ -164,6 +170,13 @@ private fun ChatRoot(
                 }
             }
             status.takeIf { it.isNotBlank() }?.let { Text(it, color = StreamHataPink, style = MaterialTheme.typography.bodySmall) }
+            if (messages.isEmpty()) {
+                Text(
+                    if (loggedIn) "Сообщений пока нет" else "Войдите, чтобы подключиться к чату",
+                    color = StreamHataMuted,
+                    modifier = Modifier.weight(1f)
+                )
+            }
             LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(messages) { message ->
                     Card(
@@ -186,7 +199,7 @@ private fun ChatRoot(
                     modifier = Modifier.weight(1f),
                     value = draft,
                     onValueChange = { draft = it },
-                    placeholder = { Text("Сообщение в Twitch-чат") },
+                    placeholder = { Text("Сообщение в Twitch-чат", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     shape = RoundedCornerShape(12.dp)
                 )
                 Button(
