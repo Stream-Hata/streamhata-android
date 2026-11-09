@@ -18,8 +18,8 @@ android {
         applicationId = "dev.rdpctd.streamhata.android"
         minSdk = 23
         targetSdk = 35
-        versionCode = 704
-        versionName = "0.7.4-alpha"
+        versionCode = 705
+        versionName = "0.7.5-alpha"
     }
 
     signingConfigs {
