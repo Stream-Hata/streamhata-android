@@ -39,10 +39,18 @@ jobs:
       - name: Install Gradle
         run: |
           set -euo pipefail
+          if command -v gradle >/dev/null 2>&1; then
+            gradle --version
+            exit 0
+          fi
           for attempt in 1 2 3 4; do
-            if curl -fsSL --retry 3 --retry-delay 5 -o /tmp/gradle.zip https://services.gradle.org/distributions/gradle-8.9-bin.zip; then
-              break
-            fi
+            for url in \
+              https://downloads.gradle.org/distributions/gradle-8.9-bin.zip \
+              https://services.gradle.org/distributions/gradle-8.9-bin.zip; do
+              if curl -fsSL --retry 2 --retry-delay 5 -o /tmp/gradle.zip "$url"; then
+                break 2
+              fi
+            done
             echo "Gradle download attempt ${attempt} failed"
             sleep 10
           done
