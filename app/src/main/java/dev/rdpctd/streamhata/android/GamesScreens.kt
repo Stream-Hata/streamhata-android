@@ -243,7 +243,7 @@ fun GameDiscussionScreen(
 
         val imagePlugin = object : TuiEditorPlugin {
             override fun tools(controller: dev.rdpctd.streamhata.tuieditor.TuiEditorController) = listOf(
-                EditorTool("image", if (uploading) "…" else "🖼") { imagePicker.launch("image/*") }
+                EditorTool("image", if (uploading) "…" else "🖼", action = { imagePicker.launch("image/*") })
             )
         }
         TuiEditor(
