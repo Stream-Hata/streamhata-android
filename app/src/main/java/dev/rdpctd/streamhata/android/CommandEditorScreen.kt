@@ -1,5 +1,12 @@
 package dev.rdpctd.streamhata.android
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -14,7 +21,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Switch
@@ -39,6 +49,117 @@ import dev.rdpctd.streamhata.core.ui.StreamHataLoading
 import dev.rdpctd.streamhata.core.ui.StreamHataMuted
 import dev.rdpctd.streamhata.core.ui.StreamHataPink
 import dev.rdpctd.streamhata.core.ui.StreamHataSurface
+import dev.rdpctd.streamhata.core.ui.StreamHataText
+
+private data class CommandAction(val value: String, val label: String)
+
+private val COMMAND_ACTIONS = listOf(
+    CommandAction("say", "Сообщение в чат"),
+    CommandAction("announce", "Анонс"),
+    CommandAction("shoutout", "Шаут"),
+    CommandAction("raid", "Рейд"),
+    CommandAction("raid.cancel", "Отменить рейд"),
+    CommandAction("marker", "Маркер стрима"),
+    CommandAction("clip", "Создать клип"),
+    CommandAction("delete", "Удалить сообщение"),
+    CommandAction("ban", "Бан"),
+    CommandAction("unban", "Разбан"),
+    CommandAction("timeout", "Таймаут"),
+    CommandAction("shield.on", "Shield Mode вкл"),
+    CommandAction("shield.off", "Shield Mode выкл"),
+    CommandAction("title.set", "Сменить заголовок"),
+    CommandAction("game.set", "Сменить игру"),
+    CommandAction("commercial", "Реклама"),
+    CommandAction("poll", "Опрос"),
+    CommandAction("poll.end", "Завершить опрос"),
+    CommandAction("points.add", "Начислить баллы"),
+    CommandAction("points.remove", "Снять баллы"),
+    CommandAction("points.set", "Установить баллы"),
+    CommandAction("points.balance", "Мой баланс"),
+    CommandAction("points.top", "Топ баллов"),
+    CommandAction("points.shop", "Магазин баллов"),
+    CommandAction("points.redeem", "Купить награду"),
+    CommandAction("music.add", "Добавить музыку"),
+    CommandAction("music.current", "Текущая музыка"),
+    CommandAction("lastmusic", "Последняя музыка"),
+    CommandAction("wheel", "Колесо"),
+    CommandAction("games.slots", "Слоты"),
+    CommandAction("games.wheel", "Колесо игр"),
+    CommandAction("games.trivia", "Викторина"),
+    CommandAction("games.duel", "Дуэль"),
+    CommandAction("games.accept", "Принять дуэль"),
+    CommandAction("quote.add", "Добавить цитату"),
+    CommandAction("quotes.random", "Случайная цитата"),
+    CommandAction("dice", "Кубик"),
+    CommandAction("coinflip", "Монетка"),
+    CommandAction("random", "Случайный выбор"),
+    CommandAction("random.number", "Случайное число"),
+    CommandAction("variable.set", "Установить переменную"),
+    CommandAction("variable.inc", "Увеличить переменную"),
+    CommandAction("variable.dec", "Уменьшить переменную"),
+    CommandAction("command.run", "Выполнить команду"),
+    CommandAction("timer.start", "Запустить таймер"),
+    CommandAction("timer.pause", "Пауза таймера"),
+    CommandAction("timer.reset", "Сбросить таймер"),
+    CommandAction("timer.add", "Добавить время"),
+    CommandAction("twitch.followage", "Возраст фоллова"),
+    CommandAction("twitch.accountage", "Возраст аккаунта"),
+    CommandAction("twitch.uptime", "Аптайм"),
+    CommandAction("twitch.viewers", "Зрители"),
+    CommandAction("twitch.title", "Заголовок"),
+    CommandAction("twitch.game", "Игра"),
+    CommandAction("twitch.followers", "Фолловеры"),
+    CommandAction("twitch.subscribers", "Подписчики"),
+    CommandAction("twitch.chatters", "Чаттеры"),
+    CommandAction("widget.enable", "Включить виджет"),
+    CommandAction("widget.disable", "Выключить виджет"),
+    CommandAction("widget.toggle", "Переключить виджет"),
+    CommandAction("widget.config", "Настроить виджет"),
+    CommandAction("alert.test", "Тест алерта"),
+    CommandAction("roulette.spin", "Рулетка"),
+    CommandAction("roulette.last", "Последняя рулетка"),
+    CommandAction("reward.create", "Создать награду"),
+    CommandAction("reward.update", "Обновить награду"),
+    CommandAction("reward.delete", "Удалить награду"),
+    CommandAction("reward.fulfill", "Выполнить награду"),
+    CommandAction("mod.add", "Добавить модератора"),
+    CommandAction("mod.remove", "Убрать модератора"),
+    CommandAction("vip.add", "Добавить VIP"),
+    CommandAction("vip.remove", "Убрать VIP"),
+    CommandAction("chat.settings", "Настройки чата"),
+)
+
+private fun actionLabel(value: String): String = COMMAND_ACTIONS.firstOrNull { it.value == value }?.label ?: value
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ActionPicker(value: String, onSelect: (String) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+
+    OutlinedButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth()) {
+        Text(actionLabel(value))
+    }
+    if (open) {
+        ModalBottomSheet(onDismissRequest = { open = false }) {
+            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Действие команды", style = MaterialTheme.typography.titleMedium)
+                LazyColumn(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    items(COMMAND_ACTIONS) { action ->
+                        TextButton(
+                            onClick = { onSelect(action.value); open = false },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(Modifier.fillMaxWidth()) {
+                                Text(action.label, color = if (value == action.value) StreamHataPink else StreamHataText)
+                                Text(action.value, color = StreamHataMuted, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 private const val TAB_COMMANDS = 0
 private const val TAB_TRIGGERS = 1
@@ -81,10 +202,20 @@ fun CommandEditorScreen(api: ApiClient, onBack: () -> Unit) {
         if (loading) {
             StreamHataLoading("Загружаем настройки чата…")
         } else {
-            when (tab) {
-                TAB_COMMANDS -> CommandsTab(api, commands) { status = it; reload() }
-                TAB_TRIGGERS -> TriggersTab(api, triggers) { status = it; reload() }
-                else -> VariablesTab(api, variables) { status = it; reload() }
+            AnimatedContent(
+                targetState = tab,
+                transitionSpec = {
+                    (fadeIn(tween(180)) + slideInHorizontally(tween(180)) { it / 12 })
+                        .togetherWith(fadeOut(tween(120)) + slideOutHorizontally(tween(180)) { -it / 12 })
+                },
+                modifier = Modifier.fillMaxSize(),
+                label = "command-tab"
+            ) { selectedTab ->
+                when (selectedTab) {
+                    TAB_COMMANDS -> CommandsTab(api, commands) { status = it; reload() }
+                    TAB_TRIGGERS -> TriggersTab(api, triggers) { status = it; reload() }
+                    else -> VariablesTab(api, variables) { status = it; reload() }
+                }
             }
         }
     }
@@ -104,7 +235,8 @@ private fun CommandsTab(api: ApiClient, commandList: List<CommandSummary>, onCha
     Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedTextField(name, { name = it }, label = { Text("Имя без !") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(aliases, { aliases = it }, label = { Text("Алиасы через запятую") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(action, { action = it }, label = { Text("Действие: say / points / timeout / wheel / clip") }, modifier = Modifier.fillMaxWidth())
+        Text("Действие", color = StreamHataMuted)
+        ActionPicker(action) { action = it }
         OutlinedTextField(response, { response = it }, label = { Text("Ответ") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(cooldown, { cooldown = it.filter(Char::isDigit).take(5) }, label = { Text("Кулдаун, сек") }, modifier = Modifier.weight(1f))
@@ -177,7 +309,8 @@ private fun TriggersTab(api: ApiClient, triggerList: List<TriggerSummary>, onCha
 
     Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Триггеры связывают команду чата с действием.", color = StreamHataMuted)
-        OutlinedTextField(action, { action = it }, label = { Text("Действие, например points.balance") }, modifier = Modifier.fillMaxWidth())
+        Text("Действие", color = StreamHataMuted)
+        ActionPicker(action) { action = it }
         OutlinedTextField(command, { command = it }, label = { Text("Команда") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(aliases, { aliases = it }, label = { Text("Алиасы через запятую") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(description, { description = it }, label = { Text("Описание") }, modifier = Modifier.fillMaxWidth())

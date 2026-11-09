@@ -8,6 +8,13 @@ import android.widget.Toast
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -60,6 +67,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -174,6 +182,7 @@ private fun App(
     val scope = rememberCoroutineScope()
     var showAdvanced by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val launchChatApp = {
         val installed = runCatching {
@@ -260,7 +269,7 @@ private fun App(
     ) {
     Scaffold(
         containerColor = Color.Transparent,
-        topBar = { AppHeader(loggedIn = loggedIn, profile = profile, onMenu = { scope.launch { drawerState.open() } }) },
+        topBar = { AppHeader(loggedIn = loggedIn, profile = profile, onMenu = { keyboardController?.hide(); scope.launch { drawerState.open() } }) },
     ) { padding ->
         CompositionLocalProvider(LocalContentColor provides StreamHataText) {
         Box(
@@ -273,7 +282,16 @@ private fun App(
                     )
                 )
         ) {
-            when (screen) {
+            AnimatedContent(
+                targetState = screen,
+                transitionSpec = {
+                    (fadeIn(tween(220)) + slideInHorizontally(tween(220)) { it / 10 })
+                        .togetherWith(fadeOut(tween(150)) + slideOutHorizontally(tween(220)) { -it / 10 })
+                },
+                modifier = Modifier.fillMaxSize(),
+                label = "screen"
+            ) { currentScreen ->
+                when (currentScreen) {
                 "games" -> {
                     val game = selectedGame
                     when {
@@ -338,6 +356,7 @@ private fun App(
                     api = api,
                     onLogin = onLogin,
                 )
+            }
             }
         }
         }
