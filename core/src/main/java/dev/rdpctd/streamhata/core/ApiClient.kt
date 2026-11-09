@@ -1,6 +1,7 @@
 package dev.rdpctd.streamhata.core
 
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -807,6 +808,26 @@ class ApiClient(private val tokenProvider: () -> String?) {
             }
             callback(parseGameDetail(json))
         }
+    }
+
+    fun uploadDiscussionImage(fileName: String, bytes: ByteArray, mime: String, callback: (String?) -> Unit) {
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("file", fileName, bytes.toRequestBody(mime.toMediaType()))
+            .build()
+        val request = Request.Builder()
+            .url(AuthConfig.baseUrl + "/rgg-sync/messaging/upload")
+            .post(body)
+            .build()
+        Thread {
+            val result = runCatching {
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) null
+                    else JSONObject(response.body?.string().orEmpty()).optString("url").ifBlank { null }
+                }
+            }.getOrNull()
+            callback(result)
+        }.start()
     }
 
     fun desktopCode(callback: (String?) -> Unit) {
