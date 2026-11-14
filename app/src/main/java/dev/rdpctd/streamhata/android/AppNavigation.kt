@@ -45,7 +45,8 @@ val APP_SECTIONS = listOf(
             AppDestination("roulette", "Рулетка", advanced = true),
             AppDestination("music", "Музыка", advanced = true),
             AppDestination("journal", "Журнал", advanced = true),
-            AppDestination("notifications", "Уведомления", advanced = true)
+            AppDestination("notifications", "Уведомления", advanced = true),
+            AppDestination("security", "Безопасность", advanced = true)
         )
     ),
     AppSection(

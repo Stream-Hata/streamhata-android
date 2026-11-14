@@ -1,12 +1,16 @@
 package dev.rdpctd.streamhata.android
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -71,6 +75,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import dev.rdpctd.streamhata.core.AnalyticsSummary
 import dev.rdpctd.streamhata.core.ApiClient
 import dev.rdpctd.streamhata.core.AuthManager
@@ -105,6 +110,9 @@ class MainActivity : ComponentActivity() {
     private val profile = mutableStateOf<TwitchProfile?>(null)
     private val profileError = mutableStateOf(false)
     private val identity = mutableStateOf<MessagingIdentity?>(null)
+    private val canViewSecurity = mutableStateOf(false)
+    private var securityNotifier: SecurityAlertNotifier? = null
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -115,8 +123,22 @@ class MainActivity : ComponentActivity() {
         recovery = RecoveryManager(this)
         identity.value = identityStore.loadOrCreate()
         loggedIn.value = auth.isLoggedIn()
-        auth.handleIntent(intent.data) { loggedIn.value = it; if (it) loadProfile() }
-        if (loggedIn.value) loadProfile()
+        auth.handleIntent(intent.data) {
+            loggedIn.value = it
+            if (it) {
+                loadProfile()
+                loadMembership()
+                requestNotificationPermission()
+            } else {
+                canViewSecurity.value = false
+            }
+        }
+        if (loggedIn.value) {
+            loadProfile()
+            loadMembership()
+            requestNotificationPermission()
+        }
+        securityNotifier = SecurityAlertNotifier(this, api, auth).also { it.start() }
         setContent {
             StreamHataTheme {
                 App(
@@ -127,12 +149,14 @@ class MainActivity : ComponentActivity() {
                     auth = auth,
                     api = api,
                     recovery = recovery,
+                    canViewSecurity = canViewSecurity.value,
                     onLogin = { auth.openLogin() },
                     onLogout = {
                         auth.logout()
                         loggedIn.value = false
                         profile.value = null
                         profileError.value = false
+                        canViewSecurity.value = false
                     },
                     onProfile = { loadProfile() },
                     onRestored = { restored -> identity.value = restored; identityStore.save(restored) },
@@ -143,7 +167,41 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        auth.handleIntent(intent.data) { loggedIn.value = it; if (it) loadProfile() }
+        auth.handleIntent(intent.data) {
+            loggedIn.value = it
+            if (it) {
+                loadProfile()
+                loadMembership()
+                requestNotificationPermission()
+            } else {
+                canViewSecurity.value = false
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        securityNotifier?.stop()
+        securityNotifier = null
+        super.onDestroy()
+    }
+
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
+        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    private fun loadMembership() {
+        if (!auth.isLoggedIn()) {
+            canViewSecurity.value = false
+            return
+        }
+        api.accessMembership { membership ->
+            runOnUiThread {
+                canViewSecurity.value = membership != null &&
+                    (membership.role == "owner" || membership.role == "admin" || membership.groupAdmin)
+            }
+        }
     }
 
     private fun loadProfile() {
@@ -170,6 +228,7 @@ private fun App(
     auth: AuthManager,
     api: ApiClient,
     recovery: RecoveryManager,
+    canViewSecurity: Boolean,
     onLogin: () -> Unit,
     onLogout: () -> Unit,
     onProfile: () -> Unit,
@@ -230,7 +289,9 @@ private fun App(
                         Text("StreamHata", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(8.dp))
                     }
                     APP_SECTIONS.forEach { section ->
-                        val visible = section.items.filter { showAdvanced || !it.advanced }
+                        val visible = section.items.filter {
+                            (showAdvanced || !it.advanced) && (it.id != "security" || canViewSecurity)
+                        }
                         if (visible.isNotEmpty()) {
                             item {
                                 Text(
@@ -329,6 +390,7 @@ private fun App(
                 "viewers" -> ViewersScreen(api = api, onBack = { screen = "profile" })
                 "points" -> PointsScreen(api = api, onBack = { screen = "profile" })
                 "notifications" -> NotificationsScreen(api = api, onBack = { screen = "profile" })
+                "security" -> SecurityScreen(api = api, onBack = { screen = "profile" })
                 "music" -> MusicScreen(api = api, onBack = { screen = "profile" })
                 "polls" -> PollsScreen(api = api, onBack = { screen = "profile" })
                 "roulette" -> RouletteScreen(api = api, onBack = { screen = "profile" })

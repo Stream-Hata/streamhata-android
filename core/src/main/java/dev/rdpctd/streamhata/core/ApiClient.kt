@@ -143,6 +143,34 @@ data class RouletteSummary(
     val lastPlatform: String
 )
 
+data class SecurityIncidentSummary(
+    val id: Long,
+    val kind: String,
+    val verdict: String,
+    val severity: String,
+    val status: String,
+    val senderLogin: String,
+    val fileName: String,
+    val fileHash: String,
+    val reason: String,
+    val createdAt: String,
+    val reviewDeadline: String,
+    val autoBanAt: String?,
+    val banApplied: Boolean,
+    val report: String
+)
+
+data class SecurityAlertSummary(
+    val id: Long,
+    val incidentId: Long,
+    val createdAt: String
+)
+
+data class AccessMembership(
+    val role: String,
+    val groupAdmin: Boolean
+)
+
 data class AlertSummary(
     val id: String,
     val type: String,
@@ -682,6 +710,83 @@ class ApiClient(private val tokenProvider: () -> String?) {
 
     fun spinRoulette(callback: (Boolean) -> Unit) {
         postJson("/rgg-sync/roulette/spin", JSONObject()) { callback(it != null) }
+    }
+
+    fun accessMembership(callback: (AccessMembership?) -> Unit) {
+        request("/rgg-sync/access/membership") { json ->
+            if (json == null) {
+                callback(null)
+                return@request
+            }
+            callback(
+                AccessMembership(
+                    role = json.optString("role"),
+                    groupAdmin = json.optBoolean("groupAdmin")
+                )
+            )
+        }
+    }
+
+    fun securityIncidents(callback: (List<SecurityIncidentSummary>?) -> Unit) {
+        request("/rgg-sync/security/incidents?limit=100") { json ->
+            if (json == null) {
+                callback(null)
+                return@request
+            }
+            val items = mutableListOf<SecurityIncidentSummary>()
+            val array = json.optJSONArray("incidents")
+            if (array != null) {
+                for (index in 0 until array.length()) {
+                    val item = array.optJSONObject(index) ?: continue
+                    items += SecurityIncidentSummary(
+                        id = item.optLong("id"),
+                        kind = item.optString("kind"),
+                        verdict = item.optString("verdict"),
+                        severity = item.optString("severity"),
+                        status = item.optString("status"),
+                        senderLogin = item.optString("senderLogin"),
+                        fileName = item.optString("fileName"),
+                        fileHash = item.optString("fileHash"),
+                        reason = item.optString("reason"),
+                        createdAt = item.optString("createdAt"),
+                        reviewDeadline = item.optString("reviewDeadline"),
+                        autoBanAt = item.optString("autoBanAt").takeIf { it.isNotBlank() },
+                        banApplied = item.optBoolean("banApplied"),
+                        report = item.optJSONObject("report")?.toString().orEmpty()
+                    )
+                }
+            }
+            callback(items)
+        }
+    }
+
+    fun ackSecurityIncident(id: Long, callback: (Boolean) -> Unit) {
+        postJson("/rgg-sync/security/incidents/$id/ack", JSONObject()) { callback(it != null) }
+    }
+
+    fun resolveSecurityIncident(id: Long, action: String, note: String, callback: (Boolean) -> Unit) {
+        postJson(
+            "/rgg-sync/security/incidents/$id/resolve",
+            JSONObject().put("action", action).put("note", note)
+        ) { callback(it != null) }
+    }
+
+    fun securityAlerts(callback: (List<SecurityAlertSummary>) -> Unit) {
+        request("/rgg-sync/security/alerts") { json ->
+            val items = mutableListOf<SecurityAlertSummary>()
+            val array = json?.optJSONArray("alerts")
+            if (array != null) {
+                for (index in 0 until array.length()) {
+                    val item = array.optJSONObject(index) ?: continue
+                    items += SecurityAlertSummary(
+                        id = item.optLong("id"),
+                        incidentId = item.optLong("incidentId"),
+                        createdAt = item.optString("createdAt")
+                    )
+                }
+            }
+            callback(items)
+        }
     }
 
     fun alerts(callback: (List<AlertSummary>) -> Unit) {
